@@ -38,4 +38,21 @@ app.post('/create', (req, res) => {
   }
 })
 
+// Endpoint POST untuk mengecek validitas API key
+app.post('/cekapi', (req, res) => {
+  const { apiKey } = req.body
 
+  if (!apiKey) {
+    return res.status(400).json({ success: false, message: 'API key tidak dikirim' })
+  }
+
+  if (apiKey === myApiKey) {
+    return res.json({ success: true, message: 'API key valid' })
+  } else {
+    return res.status(401).json({ success: false, message: 'API key tidak valid' })
+  }
+})
+
+app.listen(port, () => {
+  console.log(`Server berjalan di http://localhost:${port}`)
+})
