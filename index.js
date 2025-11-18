@@ -1,74 +1,143 @@
-const express = require('express')
-const path = require('path')
-const crypto = require('crypto')
-const db = require('./database') // koneksi ke MySQL
-const app = express()
-const port = 3001
+const express = require("express");
+const path = require("path");
+const crypto = require("crypto");
+const bcrypt = require("bcrypt");
+const db = require("./database");
 
-app.use(express.json())
-app.use(express.static(path.join(__dirname, 'public')))
+const app = express();
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-// ✅ Cek koneksi
-app.get('/test', (req, res) => res.send('Hello World!'))
 
-// ✅ Rute utama
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'))
-})
+// ========================================================
+// 1. GENERATE API KEY
+// ========================================================
+app.post("/generate", (req, res) => {
+    const apiKey = crypto.randomBytes(20).toString("hex");
 
-// ==========================
-// 🔹 CREATE API KEY
-// ==========================
-app.post('/create', (req, res) => {
-  try {
-    const apiKey = `sk-sm-v1-${crypto.randomBytes(16).toString('hex').toUpperCase()}`
+    db.query(
+        "INSERT INTO apikey (`key`, createdAt, outOfDate) VALUES (?, NOW(), FALSE)",
+        [apiKey],
+        (err, result) => {
+            if (err) return res.status(500).json({ error: err });
 
-    // 🔹 Simpan ke database + waktu sekarang
-    const query = 'INSERT INTO apikey (`key`, `createdAt`) VALUES (?, NOW())'
-    db.query(query, [apiKey], (err, result) => {
-      if (err) {
-        console.error('❌ Gagal menyimpan API key:', err)
-        return res.status(500).json({ success: false, message: 'Gagal menyimpan API key' })
-      }
+            res.json({
+                id: result.insertId,
+                api_key: apiKey
+            });
+        }
+    );
+});
 
-      console.log('✅ API Key disimpan:', apiKey)
-      res.json({ success: true, apiKey })
-    })
-  } catch (error) {
-    console.error(error)
-    res.status(500).json({ success: false, message: 'Gagal membuat API key' })
-  }
-})
 
-// ==========================
-// 🔹 CEK VALIDITAS API KEY
-// ==========================
-app.post('/cekapi', (req, res) => {
-  const { apiKey } = req.body
+// ========================================================
+// 2. SAVE USER + RELASI API KEY
+// ========================================================
+app.post("/save-user", (req, res) => {
+    const { first_name, last_name, email, api_key_id } = req.body;
 
-  if (!apiKey) {
-    return res.status(400).json({ success: false, message: 'API key tidak dikirim' })
-  }
+    db.query(
+        "INSERT INTO user (first_name, last_name, email, api_key_id) VALUES (?, ?, ?, ?)",
+        [first_name, last_name, email, api_key_id],
+        (err) => {
+            if (err) return res.status(500).json({ error: err });
+            res.json({ message: "User saved!" });
+        }
+    );
+});
 
-  const query = 'SELECT * FROM apikey WHERE `key` = ?'
-  db.query(query, [apiKey], (err, results) => {
-    if (err) {
-      console.error('❌ Error saat cek API key:', err)
-      return res.status(500).json({ success: false, message: 'Terjadi kesalahan saat mengecek API key' })
-    }
 
-    if (results.length > 0) {
-      res.json({
-        success: true,
-        message: 'API key valid',
-        createdAt: results[0].createdAt
-      })
-    } else {
-      res.status(401).json({ success: false, message: 'API key tidak valid' })
-    }
-  })
-})
+// ========================================================
+// 3. REGISTER ADMIN
+// ========================================================
+app.post("/admin/register", async (req, res) => {
+    const { email, password } = req.body;
 
-app.listen(port, () => {
-  console.log(`🚀 Server berjalan di http://localhost:${port}`)
-})
+    const hashed = await bcrypt.hash(password, 10);
+
+    db.query(
+        "INSERT INTO admin (email, password) VALUES (?, ?)",
+        [email, hashed],
+        (err) => {
+            if (err) return res.status(500).json({ error: err });
+            res.json({ message: "Admin registered!" });
+        }
+    );
+});
+
+
+// ========================================================
+// 4. LOGIN ADMIN
+// ========================================================
+app.post("/admin/login", async (req, res) => {
+    const { email, password } = req.body;
+
+    db.query(
+        "SELECT * FROM admin WHERE email = ?",
+        [email],
+        async (err, rows) => {
+            if (err) return res.status(500).json({ error: err });
+
+            if (rows.length === 0)
+                return res.status(401).json({ error: "Admin not found" });
+
+            const admin = rows[0];
+
+            const match = await bcrypt.compare(password, admin.password);
+            if (!match)
+                return res.status(401).json({ error: "Invalid password" });
+
+            res.json({ message: "Login success" });
+        }
+    );
+});
+
+
+// ========================================================
+// 5. LIST USER + APIKEY STATUS
+// ========================================================
+app.get("/admin/users", (req, res) => {
+    db.query(
+        `SELECT user.*, apikey.key AS api_key, apikey.outOfDate
+         FROM user 
+         LEFT JOIN apikey ON user.api_key_id = apikey.id`,
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: err });
+
+            res.json(rows);
+        }
+    );
+});
+
+
+// ========================================================
+// 6. LIST APIKEY
+// ========================================================
+app.get("/admin/apikeys", (req, res) => {
+    db.query("SELECT * FROM apikey", (err, rows) => {
+        if (err) return res.status(500).json({ error: err });
+        res.json(rows);
+    });
+});
+
+
+// ========================================================
+// 7. CEK EXPIRED 1 BULAN
+// ========================================================
+app.get("/admin/check-status", (req, res) => {
+    db.query(
+        `UPDATE apikey 
+         SET outOfDate = TRUE 
+         WHERE createdAt < DATE_SUB(NOW(), INTERVAL 1 MONTH)`,
+        (err) => {
+            if (err) return res.status(500).json({ error: err });
+            res.json({ message: "Status updated" });
+        }
+    );
+});
+
+
+// ========================================================
+// START SERVER
+// ========================================================
+app.listen(3001, () => console.log("Server running on port 3001"));
