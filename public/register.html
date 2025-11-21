@@ -1,0 +1,105 @@
+register.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Register Admin</title>
+    <style>
+        body { 
+            background: #ffe4ef; 
+            font-family: sans-serif; 
+        }
+
+        .card {
+            width: 350px; 
+            padding: 25px 30px; 
+            background: white;
+            margin: auto; 
+            margin-top: 80px;
+            border-radius: 12px; 
+            text-align: center;
+            box-shadow: 0px 3px 8px rgba(0,0,0,0.1);
+        }
+
+        button {
+            width: 100%; 
+            padding: 12px; 
+            border: none; 
+            margin-top: 15px;
+            background: #ff4081; 
+            color: white; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 15px;
+        }
+
+        input {
+            width: 100%; 
+            padding: 12px; 
+            margin-top: 12px;
+            border-radius: 8px; 
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+        }
+
+        .login-text {
+            margin-top: 12px;
+        }
+
+        .login-text a {
+            color: #ff4081;
+            text-decoration: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        #msg {
+            margin-top: 10px;
+            font-weight: bold;
+            color: green;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="card">
+    <h2>Register Admin</h2>
+
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+
+    <button onclick="registerAdmin()">Register</button>
+
+    <p class="login-text">Sudah punya akun? <a href="/login">Login</a></p>
+
+    <p id="msg"></p>
+</div>
+
+<script>
+function registerAdmin() {
+    const body = {
+        email: document.getElementById("email").value,
+        password: document.getElementById("password").value
+    };
+
+    fetch("/admin/register", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body)
+    })
+    .then(res => res.json())
+    .then(data => {
+        const msg = document.getElementById("msg");
+        if (data.message === "Admin registered!") {
+            msg.style.color = "green";
+            msg.innerText = "Registrasi berhasil silahkan login";
+        } else {
+            msg.style.color = "red";
+            msg.innerText = data.message || "Registrasi gagal";
+        }
+    });
+}
+</script>
+
+</body>
+</html>
